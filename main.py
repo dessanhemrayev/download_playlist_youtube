@@ -20,6 +20,6 @@ def youtube_playlists_download(main_directory,playlists):
     return 'Good lik'
 
 if __name__ == "__main__":
-    youtube_playlists=['https://youtube.com/playlist?list=PLR4wcBxrUGPAmndrGEiN0wiaFqG-L5Yd-','https://youtube.com/playlist?list=PLawfWYMUziZqyUL5QDLVbe3j5BKWj42E5','https://youtube.com/playlist?list=PLmRNNqEA7JoN2bp1VXDZcwVgKkiI94Oha'
-    main_directory = '/home'
-    youtube_playlists_download(main_directory,youtube_playlists)
+    youtube_playlists=[]
+    MAIN_DIRECTORY = '/home'
+    youtube_playlists_download(MAIN_DIRECTORY,youtube_playlists)
