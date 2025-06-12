@@ -1,52 +1,120 @@
 import os
+import re
+import logging
+from urllib.parse import urlparse, parse_qs
+from typing import List, Optional
 from pytube import Playlist, YouTube
+from pytube.exceptions import PytubeError, VideoUnavailable, RegexMatchError
+from requests.exceptions import RequestException
 
-def youtube_playlists_download(main_directory, playlists):
-    """
-    Downloads all videos from the specified YouTube playlists into the given directory.
+# Настройка логгирования
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+def sanitize_title(title: str) -> str:
+    """Очистка названия плейлиста для использования в пути"""
+    safe_title = re.sub(r'[<>:"/\\|?*\x00-\x1F]', '', title)
+    safe_title = safe_title.strip()
+    return safe_title or None  # Возвращает None, если строка пустая
+
+def get_playlist_id(url: str) -> Optional[str]:
+    """Извлечение ID плейлиста из URL"""
+    try:
+        parsed = urlparse(url)
+        playlist_id = parse_qs(parsed.query).get('list', [None])[0]
+        return playlist_id
+    except Exception as e:
+        logger.warning(f"Не удалось извлечь ID плейлиста из {url}: {e}")
+        return None
+
+def get_download_directory(main_dir: str, playlist_title: str, playlist_url: str) -> str:
+    """Создание безопасного пути для сохранения плейлиста"""
+    safe_title = sanitize_title(playlist_title)
     
-    Each playlist is saved in a separate subdirectory under `main_directory/youtube`, named after the sanitized playlist title. The function attempts to download the highest resolution progressive MP4 stream for each video. Errors encountered during playlist or video processing are printed, but do not interrupt the overall download process.
+    if not safe_title:
+        playlist_id = get_playlist_id(playlist_url)
+        if playlist_id:
+            safe_title = f"playlist_{playlist_id}"
+        else:
+            safe_title = "unnamed_playlist"
+        logger.warning(f"Используется резервное имя директории: {safe_title}")
+    
+    download_dir = os.path.join(main_dir, 'youtube', safe_title)
+    os.makedirs(download_dir, exist_ok=True)
+    return download_dir
+
+def download_playlist_videos(playlist: Playlist, download_dir: str) -> None:
+    """Загрузка видео из плейлиста с обработкой ошибок"""
+    for video_url in playlist.video_urls:
+        try:
+            yt = YouTube(video_url)
+            logger.info(f"Обработка: {yt.title}")
+            
+            stream = (
+                yt.streams
+                .filter(progressive=True, file_extension='mp4')
+                .order_by('resolution')
+                .desc()
+                .first()
+            )
+            
+            if not stream:
+                logger.warning(f"Нет подходящих стримов для {yt.title}")
+                continue
+                
+            logger.info(f"Загрузка: {yt.title} ({video_url})")
+            stream.download(output_path=download_dir)
+            
+        except VideoUnavailable as e:
+            logger.error(f"Видео недоступно: {video_url} - {e}")
+        except PytubeError as e:
+            logger.error(f"Ошибка Pytube при обработке {video_url}: {e}")
+        except Exception as e:
+            logger.exception(f"Неожиданная ошибка при обработке {video_url}: {e}")
+
+def youtube_playlists_download(main_directory: str, playlists: List[str]) -> str:
+    """
+    Загружает все видео из указанных плейлистов YouTube
     
     Args:
-        main_directory: The base directory where videos will be saved.
-        playlists: List of YouTube playlist URLs.
+        main_directory: Базовая директория для сохранения видео
+        playlists: Список URL-адресов плейлистов
     
     Returns:
-        A message indicating successful completion of the download process.
+        Сообщение о завершении загрузки
     """
+    if not playlists:
+        logger.info("Список плейлистов пуст")
+        return "Нет плейлистов для загрузки"
+
     for playlist_url in playlists:
         try:
+            logger.info(f"Обработка плейлиста: {playlist_url}")
             playlist = Playlist(playlist_url)
-            # Очистка названия плейлиста для безопасного использования в пути
-            safe_title = "".join(c for c in playlist.title if c.isalnum() or c in (' ', '-', '_')).strip()
-            download_dir = os.path.join(main_directory, 'youtube', safe_title)
-            os.makedirs(download_dir, exist_ok=True)
-
-            print(f"Найдено видео в плейлисте '{playlist.title}': {len(playlist.video_urls)}")
-
-            for video_url in playlist.video_urls:
-                try:
-                    yt = YouTube(video_url)
-                    print(f"Загрузка: {yt.title} ({video_url})")
-
-                    stream = (
-                        yt.streams
-                        .filter(progressive=True, file_extension='mp4')
-                        .order_by('resolution')
-                        .desc()
-                        .first()
-                    )
-
-                    if not stream:
-                        print(f"Не найден подходящий стрим для видео: {yt.title}")
-                        continue
-
-                    stream.download(output_path=download_dir)
-                except Exception as e:
-                    print(f"Ошибка при обработке видео {video_url}: {e}")
-
+            
+            # Явно загружаем видео для получения метаданных
+            playlist._videos  # pylint: disable=protected-access
+            
+            download_dir = get_download_directory(
+                main_directory, 
+                playlist.title,
+                playlist_url
+            )
+            
+            logger.info(f"Найдено видео в плейлисте '{playlist.title}': {len(playlist.video_urls)}")
+            download_playlist_videos(playlist, download_dir)
+            
+        except RegexMatchError:
+            logger.error(f"Неверный формат URL плейлиста: {playlist_url}")
+        except RequestException as e:
+            logger.error(f"Сетевая ошибка при загрузке плейлиста {playlist_url}: {e}")
+        except PytubeError as e:
+            logger.error(f"Ошибка Pytube при обработке плейлиста {playlist_url}: {e}")
         except Exception as e:
-            print(f"Ошибка при обработке плейлиста {playlist_url}: {e}")
+            logger.exception(f"Неожиданная ошибка при обработке плейлиста {playlist_url}: {e}")
 
     return "Загрузка завершена успешно"
 
@@ -57,4 +125,4 @@ if __name__ == "__main__":
     ]
     MAIN_DIRECTORY = "/home/user"  # Укажите путь к вашей домашней директории 
     result = youtube_playlists_download(MAIN_DIRECTORY, youtube_playlists)
-    print(result)
+    logger.info(result)
