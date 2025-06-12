@@ -3,11 +3,16 @@ from pytube import Playlist, YouTube
 
 def youtube_playlists_download(main_directory, playlists):
     """
-    Загружает все видео из указанных плейлистов YouTube в указанную директорию.
-
-    :param main_directory: Базовая директория для сохранения видео.
-    :param playlists: Список URL-адресов плейлистов.
-    :return: Сообщение о завершении загрузки.
+    Downloads all videos from the specified YouTube playlists into the given directory.
+    
+    Each playlist is saved in a separate subdirectory under `main_directory/youtube`, named after the sanitized playlist title. The function attempts to download the highest resolution progressive MP4 stream for each video. Errors encountered during playlist or video processing are printed, but do not interrupt the overall download process.
+    
+    Args:
+        main_directory: The base directory where videos will be saved.
+        playlists: List of YouTube playlist URLs.
+    
+    Returns:
+        A message indicating successful completion of the download process.
     """
     for playlist_url in playlists:
         try:
