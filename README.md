@@ -25,7 +25,7 @@ pip install pytubefix
 
 или
 
-```
+```bash
 uv venv && uv sync --frozen --no-cache
 ```
 
