@@ -20,9 +20,14 @@
 Установите зависимости:
 
 ```bash
-pip install pytube
+pip install pytubefix
 ```
 
+или
+
+```bash
+uv venv && uv sync --frozen --no-cache
+```
 
 Status of last Deployment:<br>
 <img src="https://github.com/dessanhemrayev/download_playlist_youtube/workflows/YoutubePlaylist/badge.svg?branch=main"><br>
